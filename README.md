@@ -1,4 +1,4 @@
-# test
+# Music
 
 ## Project setup
 ```
