@@ -1,20 +1,21 @@
 <template>
   <div class="mixin-components-container">
-    <div class="title-container">
+    <!-- 歌曲名 TITLE -->
+    <div class="player-title">
       <p class="song-name" v-text="songName"></p>
     </div>
-
+    <!-- 波形图 WAVE -->
     <div ref="waveform"></div>
-
+    <!-- 控制栏 CONTROLS -->
     <div class="player-controls">
-      <button class="btn controls-btn-prev" @click="playPre">
+      <button class="btn controls-btn-prev" @click="playMusic('pre')">
         <i class="fa fa-backward"></i>
       </button>
-      <button class="btn controls-btn--play-pause" @click="playMusic">
+      <button class="btn controls-btn--play-pause" @click="playMusic('pause')">
         <i v-if="playing" class="fa fa-fw fa-pause"></i>
         <i v-else class="fa fa-fw fa-play"></i>
       </button>
-      <button class="btn controls-btn-next" @click="playNext">
+      <button class="btn controls-btn-next" @click="playMusic('next')">
         <i class="fa fa-forward"></i>
       </button>
       <button class="btn controls-btn-volume">
@@ -26,6 +27,12 @@
         </div>
       </button>
     </div>
+    <!-- 歌曲列表 -->
+    <div class="player-list">
+      <template v-for="(music, index) in defaultFileList">
+        <div class="music-item" :key="index" @dblclick="playMusic('play', music)">{{music | getSongName}}</div>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -33,7 +40,6 @@
   // @ is an alias to /src
   // 可视化音频插件
   import WaveSurfer from 'wavesurfer.js'
-
   /**
    * node.js 中的 path(路径) 模块 
    * 中文文档 http://nodejs.cn/api/path.html
@@ -63,6 +69,7 @@
    * remote模块为渲染进程（web页面）和主进程通信（IPC）提供了一种简单方法 
    */
   const remote = window.require('electron').remote
+  const { dialog } = window.require('electron').remote
 
 
   export default {
@@ -79,23 +86,60 @@
         }
       }
     },
+    filters: {
+      getSongName(path) {
+        let index = path.lastIndexOf('/')
+        let songName = path.substring(index + 1)
+        return songName
+      }
+    },
     methods: {
       init() {
         // 创建一个wavesurfer实例
         this.createWaveSurfer()
-        // 首次加载
-        let originPath = remote.process.argv[1]
-        originPath = '/Users/ebiz21/Music/网易云音乐/华晨宇 - 好想爱这个世界啊.mp3'
-        this.loadMusic(originPath)
+
+        this.selectFolder()
 
         /**
          * 播放其他歌曲
          * 监听主进程senond-instance传过来的第二首歌曲的本地路径
          */
         ipcRenderer.on('path', (event, arg) => {
+          console.log(arg)
           const newOriginPath = arg
           this.loadMusic(newOriginPath)
         })
+      },
+      selectFolder() {
+        return dialog.showOpenDialog({
+          properties: ['openDirectory']
+        }).then(res => {
+          if(res.filePaths?.[0]){
+            let path = res.filePaths[0]
+            fs.readdir(path, (err, files) => {
+              this.defaultFileList =this.filterFolder(files, path)
+              this.playMusic('start')
+            })
+          }
+        }).catch(err => {
+          alert('嘟嘟嘟，有问题了！')
+        })
+      },
+      filterFolder(files, dirPath) {
+        let supportType = ['mp3', 'wav', 'flac', 'ogg', 'm4a']
+        let length = files.length
+        let index = -1
+        let resultList = []
+        while(++index < length) {
+          let pointIndex = files[index].lastIndexOf('.')
+          let type = pointIndex ? files[index].substring(pointIndex + 1) : false
+          let isSupport = type ? supportType.includes(type) : false
+          if(isSupport){
+            resultList.push(dirPath + '/' +files[index])
+          }
+        }
+        console.log(resultList)
+        return resultList
       },
       createWaveSurfer() {
         this.wavesurfer = WaveSurfer.create({
@@ -111,51 +155,46 @@
           audioRate: '1' // 播放速度
         })
       },
-      playPre() {
-        this.playFileList(this.filePath, 'pre')
-      },
-      playMusic() {
-        this.playing = !this.playing
-        this.wavesurfer.playPause.bind(this.wavesurfer)()
-      },
-      playNext() {
-        this.playFileList(this.filePath, 'next')
-      },
-      playFileList(diskPath, pos) {
-        let isInFiles
-        let fileIndex
-        let preIndex
-        let nextIndex
-        let fullPath
-        let dirPath = path.dirname(diskPath)
-        let basename = path.basename(diskPath)
+      playMusic(action, diskPath) {
+        let length = this.defaultFileList.length
+        if(!length) {
+          alert('还没有歌曲可以播放，请添加!')
+          this.init()
+          return 
+        }
 
-        fs.readdir(dirPath, (err, files) => {
-          let length = files.length
-          isInFiles = files.includes(basename)
-          fileIndex = files.indexOf(basename)
-          if (!isInFiles) {
-            return
-          }
-          if (pos == 'pre') {
-            preIndex = fileIndex - 1 < 0 ? length - 1 : fileIndex - 1
-          }
-          if (pos == 'next') {
-            preIndex = fileIndex + 1 >= length ? 0 : fileIndex + 1
-          }
-          fullPath = path.resolve(dirPath, files[preIndex])
-          this.loadMusic(fullPath)
-        })
+        let fileIndex = this.defaultFileList.indexOf(this.playingPath)
+        let nextIndex
+        if(action == 'pause') {
+          this.playing = !this.playing
+          this.wavesurfer.playPause.bind(this.wavesurfer)()
+          return
+        }
+        if(action == 'start') {
+          nextIndex = 0
+        }
+        if(action == 'pre') {
+          nextIndex = fileIndex - 1 < 0 ? length - 1 : fileIndex - 1
+        }
+        if(action == 'next') {
+          nextIndex = fileIndex + 1 >= length ? 0 : fileIndex + 1
+        }
+        let path = this.defaultFileList[nextIndex]
+
+        if(action == 'play') {
+          path = diskPath
+        }
+
+        this.loadMusic(path)
       },
       loadMusic(diskPath) {
-        this.filePath = diskPath
+        this.playingPath = diskPath
         this.songName = path.basename(diskPath)
 
         let buffer = fs.readFileSync(diskPath)
         let stream = this.bufferToStream(buffer)
-        let fileUrl
         streamToBlob(stream).then(res => {
-          fileUrl = res
+          let fileUrl = res
           let filePath = window.URL.createObjectURL(fileUrl)
           this.wavesurfer.load(filePath)
           this.wavesurfer.play()
@@ -177,7 +216,6 @@
     data() {
       return {
         wavesurfer: null,
-        filePath: '',
         songName: '',
         playing: false,
         vol: 30,
@@ -186,6 +224,7 @@
         fillColor: 'rgba(48, 113, 169, 0.8)',
         emptyColor: 'rgba(48, 113, 169, 0.4)',
         percent: '30%',
+        defaultFileList: []
       }
     }
   }
@@ -193,7 +232,7 @@
 
 <style lang="less" scoped>
   .mixin-components-container {
-    .title-container {
+    .player-title {
       width: 200px;
       margin: 0 auto;
       overflow: hidden;
@@ -287,6 +326,23 @@
           border-radius: 100%;
           cursor: pointer;
         }
+      }
+    }
+
+    .player-list {
+      width: 300px;
+      height: 400px;
+      padding: 10px;
+      margin-top: 40px;
+      border-radius: 20px;
+      border: 1px solid #fff;
+      display: flex;
+      flex-direction: column;
+
+      .music-item {
+        color: #fff;
+        padding: 10px 0;
+        cursor: url(../assets/img/pointer.png), pointer;
       }
     }
   }

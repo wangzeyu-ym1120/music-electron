@@ -2,7 +2,7 @@
   <div id="app">
     <header class="header-container">
       <i @click="minimize" class="fa fa-minus" aria-hidden="true"></i>
-      <i @click="close" class="fa fa-times" aria-hidden="true"></i>
+      <i @click="close" class="fa fa-power-off" aria-hidden="true"></i>
     </header>
     <router-view/>
   </div>
@@ -40,11 +40,8 @@ export default {
       }
     }
     .fa {
-      -webkit-app-region: no-drag;
       margin: 5px 5px 0px 0px;
-      font-size: 28px;
       color: #fff;
-      font-weight: 200;
     }
   }
 }

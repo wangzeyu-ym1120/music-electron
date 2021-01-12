@@ -8,7 +8,7 @@ module.exports = {
         publish: ["github"],
         fileAssociations: [
           {
-            ext: ["mp3", "wav", "flac", "ogg", "m4a", "ncm"],
+            ext: ["mp3", "wav", "flac", "ogg", "m4a"],
             name: "music",
             role: "Editor"
           }
